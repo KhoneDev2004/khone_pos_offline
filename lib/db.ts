@@ -92,23 +92,32 @@ function runMigrations(database: Database.Database): void {
     try {
         database.exec("ALTER TABLE users ADD COLUMN active INTEGER DEFAULT 1");
     } catch { /* column already exists */ }
+
+    // Add image_path column to products if not exists
+    try {
+        database.exec("ALTER TABLE products ADD COLUMN image_path TEXT DEFAULT ''");
+    } catch { /* column already exists */ }
 }
 
 function seedAdminUser(database: Database.Database): void {
-    const existing = database.prepare('SELECT id FROM users WHERE username = ?').get('admin');
+    const hash = bcrypt.hashSync('Admin123', 10);
+    const permissions = JSON.stringify({
+        sell: true,
+        view_reports: true,
+        manage_products: true,
+        manage_stock: true,
+        manage_users: true,
+        settings: true,
+    });
+    
+    const existing = database.prepare('SELECT id FROM users WHERE username = ?').get('Admin');
     if (!existing) {
-        const hash = bcrypt.hashSync('admin123', 10);
-        const permissions = JSON.stringify({
-            sell: true,
-            view_reports: true,
-            manage_products: true,
-            manage_stock: true,
-            manage_users: true,
-            settings: true,
-        });
         database.prepare(
             'INSERT INTO users (username, password_hash, full_name, role, permissions, active) VALUES (?, ?, ?, ?, ?, 1)'
-        ).run('admin', hash, 'ເຈົ້າຂອງຮ້ານ', 'admin', permissions);
+        ).run('Admin', hash, 'ເຈົ້າຂອງຮ້ານ', 'admin', permissions);
+    } else {
+        // Force update the password in case it was changed or corrupted
+        database.prepare('UPDATE users SET password_hash = ? WHERE username = ?').run(hash, 'Admin');
     }
 }
 

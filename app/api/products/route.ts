@@ -8,6 +8,7 @@ function ensureColumns() {
     const db = getDb();
     try { db.exec("ALTER TABLE products ADD COLUMN cost_price REAL NOT NULL DEFAULT 0"); } catch { /* exists */ }
     try { db.exec("ALTER TABLE products ADD COLUMN unit TEXT DEFAULT ''"); } catch { /* exists */ }
+    try { db.exec("ALTER TABLE products ADD COLUMN image_path TEXT DEFAULT ''"); } catch { /* exists */ }
     return db;
 }
 

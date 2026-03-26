@@ -7,7 +7,7 @@ export default function Home() {
     const router = useRouter();
 
     useEffect(() => {
-        router.replace('/pos');
+        router.replace('/login');
     }, [router]);
 
     return (
@@ -20,7 +20,7 @@ export default function Home() {
             color: '#9494b8',
             fontSize: '16px',
         }}>
-            Loading POS System...
+            Loading...
         </div>
     );
 }

@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useAuth } from '@/app/hooks/useAuth';
 import {
     ShoppingCart,
     History,
@@ -10,7 +11,6 @@ import {
     Import,
     ClipboardList,
     Gift,
-    Clock,
     FolderOpen,
     Ruler,
     BarChart3,
@@ -21,6 +21,9 @@ import {
     ChevronRight,
     Barcode,
     FileWarning,
+    LogOut,
+    User,
+    Monitor,
 } from 'lucide-react';
 
 const sidebarItems = [
@@ -37,12 +40,22 @@ const sidebarItems = [
     { id: 'barcode', label: 'ສ້າງບາໂຄ້ດ', icon: Barcode, href: '/pos/barcode' },
     { id: 'member', label: 'ສະມາຊິກ', icon: Users, href: '/pos/members' },
     { id: 'employee', label: 'ຈັດການຜູ້ໃຊ້', icon: UserCog, href: '/pos/employees' },
+    { id: 'device-access', label: 'ເຂົ້າເຖິງອຸປະກອນອື່ນ', icon: Monitor, href: '/pos/device-access' },
     { id: 'settings', label: 'ຕັ້ງຄ່າ', icon: Settings, href: '/pos/settings' },
 ];
 
 export default function POSSidebar() {
     const pathname = usePathname();
     const [collapsed, setCollapsed] = useState(false);
+    const { user, logout } = useAuth();
+
+    const userInitial = user?.full_name?.charAt(0)?.toUpperCase() || user?.username?.charAt(0)?.toUpperCase() || '?';
+
+    const roleLabels: Record<string, string> = {
+        admin: 'ຜູ້ດູແລລະບົບ',
+        manager: 'ຜູ້ຈັດການ',
+        cashier: 'ພະນັກງານຂາຍ',
+    };
 
     return (
         <aside className={`pos-sidebar ${collapsed ? 'collapsed' : ''}`}>
@@ -76,6 +89,7 @@ export default function POSSidebar() {
                     );
                 })}
             </nav>
+
 
             <button
                 className="pos-sidebar-toggle"

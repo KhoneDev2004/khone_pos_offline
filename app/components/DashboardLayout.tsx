@@ -7,6 +7,7 @@ import {
     LayoutDashboard,
     ShoppingBag,
     Package,
+    PlusCircle,
     ScrollText,
     Monitor,
     ChevronLeft,
@@ -16,6 +17,7 @@ const navItems = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/dashboard/orders', label: 'Orders', icon: ShoppingBag },
     { href: '/dashboard/products', label: 'Products', icon: Package },
+    { href: '/dashboard/products/add', label: 'ເພີ່ມສິນຄ້າ', icon: PlusCircle },
     { href: '/dashboard/logs', label: 'System Logs', icon: ScrollText },
 ];
 
