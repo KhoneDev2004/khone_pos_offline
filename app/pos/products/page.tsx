@@ -6,11 +6,21 @@ import { useRouter } from 'next/navigation';
 import POSPageWrapper from '@/app/components/POSPageWrapper';
 import ConfirmModal from '@/app/components/ConfirmModal';
 import ImageCropper from '@/app/components/ImageCropper';
-import { Package, Plus, Search, Edit, Trash2, X, DollarSign, TrendingUp, Wand2, AlertTriangle, XCircle, Filter, CheckCircle, ArrowRight, Info, Camera, ImageIcon } from 'lucide-react';
+import { Package, Plus, Search, Edit, Trash2, X, DollarSign, TrendingUp, Wand2, AlertTriangle, XCircle, Filter, CheckCircle, ArrowRight, Info, Camera, ImageIcon, FileSpreadsheet, Download, Upload, Eye, ArrowUpDown, AlertCircle } from 'lucide-react';
 
 interface Product { id: number; name: string; barcode: string; price: number; cost_price: number; stock: number; category: string; unit: string; image_path: string; }
 
 interface RecentlyAdded { name: string; barcode: string; price: number; }
+
+interface ImportPreviewRow {
+    name: string;
+    barcode: string;
+    price: number;
+    cost_price: number;
+    stock: number;
+    category: string;
+    unit: string;
+}
 
 // Client-side image resize using canvas
 function resizeImage(file: File | Blob, maxWidth = 800, quality = 0.85): Promise<Blob> {
@@ -70,6 +80,16 @@ export default function ProductsPage() {
     const videoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
+
+    // Import/Export modal state
+    const [showImportExport, setShowImportExport] = useState(false);
+    const [ieTab, setIeTab] = useState<'import' | 'export'>('import');
+    const [ieFile, setIeFile] = useState<File | null>(null);
+    const [ieImporting, setIeImporting] = useState(false);
+    const [iePreview, setIePreview] = useState<ImportPreviewRow[]>([]);
+    const [ieShowPreview, setIeShowPreview] = useState(false);
+    const [ieResult, setIeResult] = useState<{ imported: number; updated: number; errors: string[] } | null>(null);
+    const ieFileRef = useRef<HTMLInputElement>(null);
 
     const LOW_STOCK_THRESHOLD = 10;
 
@@ -361,9 +381,106 @@ export default function ProductsPage() {
 
     const isAddMode = !editProduct;
 
+    // ─── Import/Export handlers ────────────────────
+    const handleIeFileSelect = async (f: File) => {
+        setIeFile(f);
+        setIeResult(null);
+        try {
+            const XLSX = await import('xlsx');
+            const buffer = await f.arrayBuffer();
+            const wb = XLSX.read(buffer, { type: 'array' });
+            const sheet = wb.Sheets[wb.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet);
+            const previewData: ImportPreviewRow[] = rows.slice(0, 20).map(r => ({
+                name: String(r.name || r.Name || r['ຊື່'] || ''),
+                barcode: String(r.barcode || r.Barcode || r['ບາໂຄດ'] || ''),
+                price: Number(r.price || r.Price || r['ລາຄາ'] || 0),
+                cost_price: Number(r.cost_price || r.CostPrice || r['ລາຄາທຶນ'] || 0),
+                stock: Number(r.stock || r.Stock || r['ສະຕ໊ອກ'] || 0),
+                category: String(r.category || r.Category || r['ໝວດ'] || ''),
+                unit: String(r.unit || r.Unit || r['ໜ່ວຍ'] || ''),
+            }));
+            setIePreview(previewData);
+            setIeShowPreview(true);
+        } catch { /* ignore preview error */ }
+    };
+
+    const handleIeImport = async () => {
+        if (!ieFile) { toast.error('ກະລຸນາເລືອກໄຟລ໌'); return; }
+        setIeImporting(true);
+        try {
+            const formData = new FormData();
+            formData.append('file', ieFile);
+            const res = await fetch('/api/import', { method: 'POST', body: formData });
+            const json = await res.json();
+            if (json.status === 'success') {
+                setIeResult(json.data);
+                toast.success(`ນຳເຂົ້າສຳເລັດ! ${json.data.imported} ລາຍການໃໝ່, ${json.data.updated} ອັບເດດ`);
+                setIeShowPreview(false);
+                fetchProducts();
+            } else { toast.error(json.message); }
+        } catch { toast.error('ນຳເຂົ້າລົ້ມເຫຼວ'); }
+        setIeImporting(false);
+    };
+
+    const downloadIeTemplate = async () => {
+        try {
+            const XLSX = await import('xlsx');
+            const data = [
+                { name: 'ນ້ຳດື່ມ 500ml', barcode: '8851234567890', price: 5000, cost_price: 3000, stock: 100, category: 'ເຄື່ອງດື່ມ', unit: 'ຂວດ' },
+                { name: 'ເຂົ້າໜຽວ 1kg', barcode: '8851234567891', price: 15000, cost_price: 10000, stock: 50, category: 'ອາຫານ', unit: 'ຖົງ' },
+                { name: 'ສະບູ ຟອງ', barcode: '8851234567892', price: 8000, cost_price: 5000, stock: 30, category: 'ເຄື່ອງໃຊ້', unit: 'ກ້ອນ' },
+                { name: 'ນົມສົດ 250ml', barcode: '8851234567893', price: 7000, cost_price: 4500, stock: 80, category: 'ເຄື່ອງດື່ມ', unit: 'ກ່ອງ' },
+                { name: 'ຫມີ່ສຳເລັດຮູບ', barcode: '8851234567894', price: 3000, cost_price: 2000, stock: 200, category: 'ອາຫານ', unit: 'ຫໍ່' },
+            ];
+            const ws = XLSX.utils.json_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Products');
+            ws['!cols'] = [
+                { wch: 22 }, { wch: 18 }, { wch: 10 }, { wch: 12 },
+                { wch: 8 }, { wch: 14 }, { wch: 10 }
+            ];
+            XLSX.writeFile(wb, 'product_import_template.xlsx');
+            toast.success('ດາວໂຫຼດແບບຟອມສຳເລັດ');
+        } catch { toast.error('ດາວໂຫຼດລົ້ມເຫຼວ'); }
+    };
+
+    const exportProducts = async () => {
+        try {
+            const XLSX = await import('xlsx');
+            const dataToExport = filteredProducts.map(p => ({
+                name: p.name,
+                barcode: p.barcode || '',
+                price: p.price,
+                cost_price: p.cost_price || 0,
+                stock: p.stock,
+                category: p.category || '',
+                unit: p.unit || '',
+            }));
+            const ws = XLSX.utils.json_to_sheet(dataToExport);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Products');
+            ws['!cols'] = [
+                { wch: 25 }, { wch: 18 }, { wch: 12 }, { wch: 12 },
+                { wch: 10 }, { wch: 16 }, { wch: 10 }
+            ];
+            const now = new Date();
+            const dateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+            XLSX.writeFile(wb, `products_export_${dateStr}.xlsx`);
+            toast.success(`ສົ່ງອອກ ${dataToExport.length} ລາຍການສຳເລັດ`);
+        } catch { toast.error('ສົ່ງອອກລົ້ມເຫຼວ'); }
+    };
+
     return (
         <POSPageWrapper title="ສິນຄ້າ" icon={<Package size={20} />} onRefresh={fetchProducts}
-            actions={<button className="btn btn-sm btn-success" onClick={openAdd}><Plus size={14} /> ເພີ່ມສິນຄ້າ</button>}>
+            actions={
+                <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-sm btn-secondary" onClick={() => { setShowImportExport(true); setIeTab('import'); setIeFile(null); setIePreview([]); setIeShowPreview(false); setIeResult(null); }}>
+                        <ArrowUpDown size={14} /> Import/Export
+                    </button>
+                    <button className="btn btn-sm btn-success" onClick={openAdd}><Plus size={14} /> ເພີ່ມສິນຄ້າ</button>
+                </div>
+            }>
 
             {/* Stock Alerts */}
             {(lowStockCount > 0 || outOfStockCount > 0) && (
@@ -780,11 +897,256 @@ export default function ProductsPage() {
             {showCropper && (
                 <ImageCropper
                     imageSrc={cropImageSrc}
-                    aspectRatio={1} // Square crop for products
-                    maxOutputSize={300} // Compress to <= 300KB
+                    aspectRatio={1}
+                    maxOutputSize={300}
                     onCropComplete={handleCropComplete}
                     onCancel={() => setShowCropper(false)}
                 />
+            )}
+
+            {/* ═══ Import/Export Modal ═══ */}
+            {showImportExport && (
+                <div className="modal-overlay" onClick={() => setShowImportExport(false)}>
+                    <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 720, padding: 0, overflow: 'hidden' }}>
+                        {/* Header */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: '1px solid var(--border-color)' }}>
+                            <h2 style={{ fontSize: 18, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <FileSpreadsheet size={22} style={{ color: '#22c55e' }} />
+                                ນຳເຂົ້າ / ສົ່ງອອກ Excel
+                            </h2>
+                            <button className="btn btn-sm btn-secondary" onClick={() => setShowImportExport(false)} style={{ padding: '4px 8px' }}>
+                                <X size={16} />
+                            </button>
+                        </div>
+
+                        {/* Tabs */}
+                        <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)' }}>
+                            {(['import', 'export'] as const).map(tab => (
+                                <button
+                                    key={tab}
+                                    onClick={() => setIeTab(tab)}
+                                    style={{
+                                        flex: 1, padding: '14px 0', border: 'none', cursor: 'pointer',
+                                        background: ieTab === tab ? 'rgba(108,92,231,0.1)' : 'transparent',
+                                        color: ieTab === tab ? '#a78bfa' : 'var(--text-secondary)',
+                                        fontWeight: 700, fontSize: 14, transition: 'all 0.2s',
+                                        borderBottom: ieTab === tab ? '3px solid #a78bfa' : '3px solid transparent',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                                    }}
+                                >
+                                    {tab === 'import' ? <><Upload size={16} /> ນຳເຂົ້າສິນຄ້າ</> : <><Download size={16} /> ສົ່ງອອກສິນຄ້າ</>}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Content */}
+                        <div style={{ padding: '24px', maxHeight: '70vh', overflowY: 'auto' }}>
+
+                            {/* ─── IMPORT TAB ─── */}
+                            {ieTab === 'import' && (
+                                <div>
+                                    {/* Upload area */}
+                                    <div
+                                        onClick={() => ieFileRef.current?.click()}
+                                        style={{
+                                            border: '2px dashed rgba(108,92,231,0.3)', borderRadius: 16,
+                                            padding: '40px 24px', textAlign: 'center', cursor: 'pointer',
+                                            background: 'rgba(108,92,231,0.04)', transition: 'all 0.2s',
+                                            marginBottom: 20,
+                                        }}
+                                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(108,92,231,0.6)'; e.currentTarget.style.background = 'rgba(108,92,231,0.08)'; }}
+                                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(108,92,231,0.3)'; e.currentTarget.style.background = 'rgba(108,92,231,0.04)'; }}
+                                    >
+                                        <Upload size={36} style={{ color: '#a78bfa', marginBottom: 12 }} />
+                                        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
+                                            {ieFile ? ieFile.name : 'ຄລິກ ຫຼື ລາກໄຟລ໌ (.xlsx) ມາວາງທີ່ນີ້'}
+                                        </div>
+                                        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                                            ຮອງຮັບໄຟລ໌ .xlsx ແລະ .xls
+                                        </div>
+                                        <input
+                                            ref={ieFileRef}
+                                            type="file"
+                                            accept=".xlsx,.xls"
+                                            hidden
+                                            onChange={e => { const f = e.target.files?.[0]; if (f) handleIeFileSelect(f); }}
+                                        />
+                                    </div>
+
+                                    {/* Template + Actions */}
+                                    <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+                                        <button
+                                            onClick={downloadIeTemplate}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: 8,
+                                                padding: '10px 18px', borderRadius: 10,
+                                                background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)',
+                                                color: '#22c55e', fontWeight: 600, fontSize: 13, cursor: 'pointer',
+                                                transition: 'all 0.2s',
+                                            }}
+                                            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(34,197,94,0.18)'; }}
+                                            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(34,197,94,0.1)'; }}
+                                        >
+                                            <Download size={15} /> ດາວໂຫຼດແບບຟອມຕົວຢ່າງ
+                                        </button>
+                                        {ieFile && (
+                                            <button className="btn btn-sm btn-secondary" onClick={() => setIeShowPreview(!ieShowPreview)}>
+                                                <Eye size={14} /> {ieShowPreview ? 'ເຊື່ອງ' : 'ເບິ່ງ'}ຕົວຢ່າງ
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={handleIeImport}
+                                            disabled={!ieFile || ieImporting}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto',
+                                                padding: '10px 24px', borderRadius: 10,
+                                                background: (!ieFile || ieImporting) ? 'rgba(108,92,231,0.2)' : 'linear-gradient(135deg, #6c5ce7, #5a4bd1)',
+                                                border: 'none', color: 'white', fontWeight: 700, fontSize: 14,
+                                                cursor: (!ieFile || ieImporting) ? 'not-allowed' : 'pointer',
+                                                opacity: (!ieFile || ieImporting) ? 0.5 : 1,
+                                                transition: 'all 0.2s',
+                                            }}
+                                        >
+                                            {ieImporting ? '⏳ ກຳລັງນຳເຂົ້າ...' : '📥 ເລີ່ມນຳເຂົ້າ'}
+                                        </button>
+                                    </div>
+
+                                    {/* Import Result */}
+                                    {ieResult && (
+                                        <div style={{ padding: 16, borderRadius: 12, background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.15)', marginBottom: 20 }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#22c55e', fontWeight: 700, fontSize: 14, marginBottom: 8 }}>
+                                                <CheckCircle size={18} /> ນຳເຂົ້າສຳເລັດ
+                                            </div>
+                                            <div style={{ display: 'flex', gap: 16, fontSize: 13, color: 'var(--text-secondary)' }}>
+                                                <span>✅ ໃໝ່: <strong style={{ color: '#22c55e' }}>{ieResult.imported}</strong></span>
+                                                <span>🔄 ອັບເດດ: <strong style={{ color: '#4fc3f7' }}>{ieResult.updated}</strong></span>
+                                            </div>
+                                            {ieResult.errors.length > 0 && (
+                                                <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 8, background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#ef4444', fontWeight: 600, fontSize: 12, marginBottom: 6 }}>
+                                                        <AlertCircle size={14} /> ຂໍ້ຜິດພາດ ({ieResult.errors.length})
+                                                    </div>
+                                                    {ieResult.errors.slice(0, 5).map((err, i) => (
+                                                        <div key={i} style={{ fontSize: 11.5, color: 'var(--text-muted)', padding: '2px 0' }}>{err}</div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Preview Table */}
+                                    {ieShowPreview && iePreview.length > 0 && (
+                                        <div style={{ marginBottom: 20 }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                                                <h4 style={{ fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                    👁️ ຕົວຢ່າງຂໍ້ມູນ (20 ແຖວທຳອິດ)
+                                                </h4>
+                                                <button className="btn btn-sm btn-secondary" onClick={() => setIeShowPreview(false)} style={{ padding: '4px 8px' }}><X size={14} /></button>
+                                            </div>
+                                            <div style={{ overflowX: 'auto', borderRadius: 10, border: '1px solid var(--border-color)' }}>
+                                                <table className="data-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>#</th><th>ຊື່ສິນຄ້າ</th><th>ບາໂຄ້ດ</th><th>ລາຄາຂາຍ</th>
+                                                            <th>ລາຄາທຶນ</th><th>ສະຕ໊ອກ</th><th>ໝວດໝູ່</th><th>ໜ່ວຍ</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {iePreview.map((r, i) => (
+                                                            <tr key={i}>
+                                                                <td>{i + 1}</td>
+                                                                <td style={{ fontWeight: 600 }}>{r.name || <span style={{ color: 'var(--accent-danger)' }}>ບໍ່ມີຊື່</span>}</td>
+                                                                <td style={{ fontFamily: 'monospace', color: 'var(--text-muted)', fontSize: 12 }}>{r.barcode || '-'}</td>
+                                                                <td style={{ color: '#4fc3f7', fontWeight: 600 }}>{r.price.toLocaleString()}</td>
+                                                                <td style={{ color: 'var(--text-secondary)' }}>{r.cost_price.toLocaleString()}</td>
+                                                                <td>{r.stock}</td>
+                                                                <td><span className="badge badge-info">{r.category || '-'}</span></td>
+                                                                <td>{r.unit || '-'}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Column Guide */}
+                                    <div style={{ padding: '16px 20px', borderRadius: 12, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)' }}>
+                                        <h4 style={{ fontSize: 13, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)' }}>
+                                            📋 ຄໍລຳທີ່ຮອງຮັບ
+                                        </h4>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 24px', fontSize: 12.5 }}>
+                                            {[
+                                                { col: 'name', desc: 'ຊື່ສິນຄ້າ', req: true },
+                                                { col: 'price', desc: 'ລາຄາຂາຍ (ກີບ)', req: true },
+                                                { col: 'barcode', desc: 'ບາໂຄ້ດ', req: false },
+                                                { col: 'cost_price', desc: 'ລາຄາທຶນ', req: false },
+                                                { col: 'stock', desc: 'ສະຕ໊ອກ', req: false },
+                                                { col: 'category', desc: 'ໝວດໝູ່', req: false },
+                                                { col: 'unit', desc: 'ໜ່ວຍ', req: false },
+                                            ].map(item => (
+                                                <div key={item.col} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+                                                    <code style={{ background: 'rgba(108,92,231,0.15)', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600, color: '#a78bfa' }}>{item.col}</code>
+                                                    <span style={{ color: 'var(--text-muted)' }}>{item.desc}</span>
+                                                    {item.req && <span style={{ color: '#ef4444', fontSize: 10, fontWeight: 700 }}>*ຈຳເປັນ</span>}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ─── EXPORT TAB ─── */}
+                            {ieTab === 'export' && (
+                                <div>
+                                    <div style={{ textAlign: 'center', padding: '20px 0 30px' }}>
+                                        <Download size={48} strokeWidth={1.2} style={{ color: '#4fc3f7', marginBottom: 16 }} />
+                                        <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 6 }}>ສົ່ງອອກສິນຄ້າ</h3>
+                                        <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                                            ດາວໂຫຼດລາຍການສິນຄ້າເປັນໄຟລ໌ Excel (.xlsx)
+                                        </p>
+                                    </div>
+
+                                    {/* Stats */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
+                                        <div style={{ padding: '16px 20px', borderRadius: 12, background: 'rgba(79,195,247,0.06)', border: '1px solid rgba(79,195,247,0.15)', textAlign: 'center' }}>
+                                            <div style={{ fontSize: 28, fontWeight: 800, color: '#4fc3f7' }}>{products.length}</div>
+                                            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>ສິນຄ້າທັງໝົດ</div>
+                                        </div>
+                                        <div style={{ padding: '16px 20px', borderRadius: 12, background: 'rgba(108,92,231,0.06)', border: '1px solid rgba(108,92,231,0.15)', textAlign: 'center' }}>
+                                            <div style={{ fontSize: 28, fontWeight: 800, color: '#a78bfa' }}>{filteredProducts.length}</div>
+                                            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>ສິນຄ້າຕາມ filter ປັດຈຸບັນ</div>
+                                        </div>
+                                    </div>
+
+                                    {filteredProducts.length !== products.length && (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 10, background: 'rgba(253,203,110,0.08)', border: '1px solid rgba(253,203,110,0.15)', color: '#fdcb6e', fontSize: 12.5, marginBottom: 20 }}>
+                                            <Info size={16} style={{ flexShrink: 0 }} />
+                                            <span>ມີ filter ຢູ່: ຈະສົ່ງອອກສະເພາະ {filteredProducts.length} ລາຍການທີ່ filter ໄວ້</span>
+                                        </div>
+                                    )}
+
+                                    <button
+                                        onClick={() => { exportProducts(); }}
+                                        disabled={filteredProducts.length === 0}
+                                        style={{
+                                            width: '100%', padding: '14px 24px', borderRadius: 12,
+                                            background: filteredProducts.length === 0 ? 'rgba(108,92,231,0.2)' : 'linear-gradient(135deg, #4fc3f7, #6c5ce7)',
+                                            border: 'none', color: 'white', fontWeight: 700, fontSize: 15,
+                                            cursor: filteredProducts.length === 0 ? 'not-allowed' : 'pointer',
+                                            opacity: filteredProducts.length === 0 ? 0.5 : 1,
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                                            transition: 'all 0.2s', boxShadow: filteredProducts.length > 0 ? '0 4px 20px rgba(108,92,231,0.25)' : 'none',
+                                        }}
+                                    >
+                                        <Download size={18} />
+                                        📊 ສົ່ງອອກ {filteredProducts.length} ລາຍການ (.xlsx)
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
             )}
 
             <ConfirmModal
